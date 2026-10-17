@@ -10,7 +10,7 @@ pg() {
 }
 
 ch() {
-    $COMPOSE exec -T clickhouse clickhouse-client --user admin --password admin \
+    $COMPOSE exec -T clickhouse clickhouse-client --user admin --password admin --database analytics \
         --format PrettyCompact --time -q "$1" 2>&1 \
         | sed -E 's/^([0-9]+\.[0-9]+)$/Time: \1 s/'
 }

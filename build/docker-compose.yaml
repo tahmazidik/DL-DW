@@ -97,12 +97,13 @@ services:
       clickhouse:
         condition: service_healthy
 
-  # Оркестратор: по кнопке (или расписанию) дёргает шаги пайплайна по порядку.
+  # Оркестратор
   airflow:
     image: apache/airflow:3.1.0
     command: standalone
     environment:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
       AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow:8080/execution/
       # Для демо пускаем в UI без логина.
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"

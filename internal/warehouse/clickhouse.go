@@ -61,7 +61,9 @@ func (w *Warehouse) LoadPeople(ctx context.Context, objectURL string) (uint64, e
 		`DROP TABLE IF EXISTS analytics.people_staging`,
 		`CREATE TABLE analytics.people_staging AS analytics.people`,
 		`INSERT INTO analytics.people_staging (id, name, country, age, created_at)
-		 SELECT id, name, country, age, created_at FROM ` + source,
+		 SELECT id, name, country, age, created_at FROM ` + source + `
+		 -- Не превращать часть пути dt=YYYY-MM-DD в отдельную колонку.
+		 SETTINGS use_hive_partitioning = 0`,
 		`EXCHANGE TABLES analytics.people AND analytics.people_staging`,
 		`DROP TABLE analytics.people_staging`,
 	}

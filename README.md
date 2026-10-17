@@ -1,4 +1,4 @@
-# Database vs Data Lake vs Data Warehouse — демо
+# Database vs Data Lake vs Data Warehouse
 
 ```
 Postgres (БД, OLTP) ──► Go-сервис ──► MinIO/S3 (озеро, Parquet) ──► ClickHouse (хранилище, OLAP) ──► Grafana
@@ -36,7 +36,7 @@ docker compose -f build/docker-compose.yaml up -d --build
 
 ## Сценарий демо
 
-**1. Заполняем базу данных.** Генерируем 10 млн людей (около минуты):
+**1. Заполняем базу данных.** Генерируем 10 млн людей (около 20 секунд). Скрипт **сначала очищает** таблицу `people`. Данные специально неравномерные: популярные имена встречаются чаще, страны разного размера, регистраций с каждым месяцем больше.
 
 ```bash
 docker compose -f build/docker-compose.yaml exec postgres \
@@ -72,13 +72,23 @@ DESCRIBE s3('http://minio:9000/data-lake/raw/people/*/*.parquet', 'minioadmin', 
 SELECT country, count() FROM s3('http://minio:9000/data-lake/raw/people/*/*.parquet', 'minioadmin', 'minioadmin123', 'Parquet') GROUP BY country;
 ```
 
+`DESCRIBE` покажет, что ClickHouse сам вывел типы колонок из файла, а ещё добавил колонку `dt`, взяв её из пути `dt=2026-10-17/`.
+
 **5. Сравниваем скорость.**
 
 ```bash
 ./scripts/benchmark.sh
 ```
 
+Замер на 10 млн строк:
+
+| Запрос | Postgres | ClickHouse |
+|--------|----------|------------|
+| `GROUP BY country` | ~380 мс | ~19 мс |
+| `GROUP BY month` | ~1600 мс | ~15 мс |
+| `WHERE id = ...` | ~2 мс | ~23 мс |
+
 Аналитические запросы (`GROUP BY` по всей таблице) ClickHouse выполняет в десятки раз быстрее.
 Поиск одной строки по `id` быстрее в Postgres: у него индекс по первичному ключу. Это и есть разница между OLTP и OLAP.
 
-**6. Дашборды.** Grafana → папка *People Analytics*.
+**6. Дашборды.** Grafana → папка *People Analytics* → дашборд *People Analytics*: график регистраций по дням, статистика по странам, топ-10 имён.

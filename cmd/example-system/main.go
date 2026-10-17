@@ -84,7 +84,6 @@ func (a *App) peopleHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch raw[0] {
 	case '{':
-		// Пришёл один объект — превращаем его в массив из одного элемента.
 		var person database.Person
 		if err := json.Unmarshal(raw, &person); err != nil {
 			http.Error(w, "invalid person", http.StatusBadRequest)
@@ -93,7 +92,6 @@ func (a *App) peopleHandler(w http.ResponseWriter, r *http.Request) {
 		people = []database.Person{person}
 
 	case '[':
-		// Пришёл массив объектов.
 		if err := json.Unmarshal(raw, &people); err != nil {
 			http.Error(w, "invalid people array", http.StatusBadRequest)
 			return
@@ -109,7 +107,6 @@ func (a *App) peopleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверяем все записи ДО начала транзакции.
 	for i := range people {
 		people[i].Name = strings.TrimSpace(people[i].Name)
 		people[i].Country = strings.TrimSpace(people[i].Country)

@@ -1,23 +1,24 @@
 {
   "uid": "people-overview",
-  "title": "People Overview",
-  "tags": ["people", "overview"],
+  "title": "People Analytics",
+  "tags": ["people", "analytics"],
   "timezone": "browser",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "panels": [
     {
       "id": 1,
-      "title": "Total People",
-      "type": "stat",
+      "title": "Signups per Day",
+      "description": "Сколько людей зарегистрировалось за каждый день. Период выбирается справа сверху.",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "clickhouse"
       },
       "gridPos": {
-        "h": 5,
-        "w": 8,
+        "h": 10,
+        "w": 24,
         "x": 0,
         "y": 0
       },
@@ -26,59 +27,115 @@
           "refId": "A",
           "queryType": "table",
           "format": 1,
-          "rawSql": "SELECT count() AS total_people FROM analytics.people"
+          "rawSql": "SELECT toStartOfDay(created_at) AS time, count() AS signups FROM analytics.people WHERE $__timeFilter(created_at) GROUP BY time ORDER BY time"
         }
       ],
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": ["min", "max", "mean", "sum", "lastNotNull"]
         },
-        "textMode": "auto"
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "fieldConfig": {
         "defaults": {
+          "displayName": "Signups",
           "unit": "short",
-          "decimals": 0
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": false
+          }
         },
         "overrides": []
       }
     },
     {
       "id": 2,
-      "title": "People by Country",
-      "type": "barchart",
+      "title": "Country Statistics",
+      "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "clickhouse"
       },
       "gridPos": {
-        "h": 9,
-        "w": 16,
-        "x": 8,
-        "y": 0
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 10
       },
       "targets": [
         {
           "refId": "A",
           "queryType": "table",
           "format": 1,
-          "rawSql": "SELECT country, count() AS people FROM analytics.people GROUP BY country ORDER BY people DESC"
+          "rawSql": "SELECT country, count() AS people, round(avg(age), 1) AS average_age FROM analytics.people GROUP BY country ORDER BY people DESC"
         }
       ],
       "options": {
-        "orientation": "auto",
+        "showHeader": true,
+        "cellHeight": "md",
+        "footer": {
+          "show": false,
+          "reducer": ["sum"],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Top 10 Names",
+      "type": "barchart",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT name, count() AS people FROM analytics.people GROUP BY name ORDER BY people LIMIT 10"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0,
         "showValue": "always",
         "stacking": "none",
         "groupWidth": 0.7,
-        "barWidth": 0.97,
+        "barWidth": 0.9,
         "barRadius": 0,
         "fullHighlight": false,
         "tooltip": {
@@ -99,7 +156,7 @@
     }
   ],
   "time": {
-    "from": "now-24h",
+    "from": "now-1y",
     "to": "now"
   },
   "timepicker": {},
