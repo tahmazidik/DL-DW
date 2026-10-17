@@ -1,0 +1,137 @@
+# Все относительные пути считаются от папки build/.
+# Запуск из корня проекта: docker compose -f build/docker-compose.yaml up -d --build
+
+services:
+  # База данных (OLTP)
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql/postgres_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./sql:/sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  adminer:
+    image: adminer:6
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Озеро данных (S3-совместимое объектное хранилище).
+  # Официальные образы MinIO больше не публикуются на Docker Hub, поэтому зеркало от Airbyte.
+  minio:
+    image: airbyte/minio:RELEASE.2023-11-20T22-40-07Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  # Хранилище данных (OLAP)
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9002:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - chdata:/var/lib/clickhouse
+      - ./sql/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # Проверяем именно таблицу: значит, init-скрипт уже отработал.
+      test: ["CMD-SHELL", "clickhouse-client --user admin --password admin -q 'SELECT count() FROM analytics.people'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Go-сервис: принимает записи в Postgres и переносит данные Postgres -> S3 -> ClickHouse.
+  pipeline:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile
+    environment:
+      PORT: "8088"
+      PG_DSN: postgres://app:password@postgres:5432/app
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: data-lake
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      AWS_EC2_METADATA_DISABLED: "true"
+      CH_ADDR: clickhouse:9000
+      CH_USER: admin
+      CH_PASSWORD: admin
+    ports:
+      - "8088:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+
+  # Оркестратор: по кнопке (или расписанию) дёргает шаги пайплайна по порядку.
+  airflow:
+    image: apache/airflow:3.1.0
+    command: standalone
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow:8080/execution/
+      # Для демо пускаем в UI без логина.
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      PIPELINE_URL: http://pipeline:8088
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+    depends_on:
+      - pipeline
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-clickhouse-datasource
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  miniodata:
+  chdata:
+  grafanadata:
